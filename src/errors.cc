@@ -45,6 +45,10 @@ Baton::Baton(void* data) {
   m_data = data;
 }
 
+bool Baton::isErr() {
+  return m_err != RdKafka::ErrorCode::ERR_NO_ERROR;
+}
+
 v8::Local<v8::Object> Baton::ToObject() {
   if (m_errstr.empty()) {
     return RdKafkaError(m_err);

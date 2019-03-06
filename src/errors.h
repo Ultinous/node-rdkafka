@@ -30,6 +30,8 @@ class Baton {
     return static_cast<T>(m_data);
   }
 
+  bool isErr();
+
   RdKafka::ErrorCode err();
   std::string errstr();
 
@@ -38,7 +40,7 @@ class Baton {
  private:
   void* m_data;
   std::string m_errstr;
-  RdKafka::ErrorCode m_err;
+  RdKafka::ErrorCode m_err = RdKafka::ErrorCode::ERR_NO_ERROR;
 };
 
 v8::Local<v8::Object> RdKafkaError(const RdKafka::ErrorCode &);

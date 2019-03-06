@@ -89,7 +89,7 @@ class MessageWorker : public ErrorAwareWorker {
       return;
     }
 
-    std::vector<RdKafka::Message*> message_queue;
+    std::vector<Baton> message_queue;
 
     {
       scoped_mutex_lock lock(m_async_lock);
@@ -98,7 +98,7 @@ class MessageWorker : public ErrorAwareWorker {
     }
 
     for (unsigned int i = 0; i < message_queue.size(); i++) {
-      HandleMessageCallback(message_queue[i]);
+      HandleMessageCallback(std::move(message_queue[i]));
 
       // we are done with it. it is about to go out of scope
       // for the last time so let's just free it up here. can't rely
@@ -109,8 +109,8 @@ class MessageWorker : public ErrorAwareWorker {
   class ExecutionMessageBus {
     friend class MessageWorker;
    public:
-     void Send(RdKafka::Message* m) const {
-       that_->Produce_(m);
+     void Send(Baton b) const {
+       that_->Produce_(std::move(b));
      }
    private:
     explicit ExecutionMessageBus(MessageWorker* that) : that_(that) {}
@@ -118,7 +118,7 @@ class MessageWorker : public ErrorAwareWorker {
   };
 
   virtual void Execute(const ExecutionMessageBus&) = 0;
-  virtual void HandleMessageCallback(RdKafka::Message*) = 0;
+  virtual void HandleMessageCallback(Baton) = 0;
 
   virtual void Destroy() {
     uv_close(reinterpret_cast<uv_handle_t*>(m_async), AsyncClose_);
@@ -130,9 +130,9 @@ class MessageWorker : public ErrorAwareWorker {
     Execute(message_bus);
   }
 
-  void Produce_(RdKafka::Message* m) {
+  void Produce_(Baton b) {
     scoped_mutex_lock lock(m_async_lock);
-    m_asyncdata.push_back(m);
+    m_asyncdata.push_back(std::move(b));
     uv_async_send(m_async);
   }
   NAN_INLINE static NAUV_WORK_CB(m_async_message) {
@@ -148,7 +148,7 @@ class MessageWorker : public ErrorAwareWorker {
 
   uv_async_t *m_async;
   uv_mutex_t m_async_lock;
-  std::vector<RdKafka::Message*> m_asyncdata;
+  std::vector<Baton> m_asyncdata;
 };
 
 namespace Handle {
@@ -283,7 +283,7 @@ class KafkaConsumerConsumeLoop : public MessageWorker {
   void Execute(const ExecutionMessageBus&);
   void HandleOKCallback();
   void HandleErrorCallback();
-  void HandleMessageCallback(RdKafka::Message*);
+  void HandleMessageCallback(Baton);
  private:
   NodeKafka::KafkaConsumer * consumer;
   const int m_timeout_ms;

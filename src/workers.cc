@@ -435,6 +435,7 @@ void KafkaConsumerConsumeLoop::Execute(const ExecutionMessageBus& bus) {
     Baton b = consumer->Consume(m_timeout_ms);
     switch (b.err()) {
       case RdKafka::ERR__PARTITION_EOF:
+        bus.Send(std::move(b));
         // EOF means there are no more messages to read.
         // We should wait a little bit for more messages to come in
         // when in consume loop mode
@@ -458,7 +459,7 @@ void KafkaConsumerConsumeLoop::Execute(const ExecutionMessageBus& bus) {
         #endif
         break;
       case RdKafka::ERR_NO_ERROR:
-        bus.Send(b.data<RdKafka::Message*>());
+        bus.Send(std::move(b));
         break;
       default:
         // Unknown error. We need to break out of this
@@ -469,17 +470,23 @@ void KafkaConsumerConsumeLoop::Execute(const ExecutionMessageBus& bus) {
   }
 }
 
-void KafkaConsumerConsumeLoop::HandleMessageCallback(RdKafka::Message* msg) {
+void KafkaConsumerConsumeLoop::HandleMessageCallback(Baton b) {
   Nan::HandleScope scope;
 
   const unsigned int argc = 2;
   v8::Local<v8::Value> argv[argc];
 
-  argv[0] = Nan::Null();
-  argv[1] = Conversion::Message::ToV8Object(msg);
+  if(b.isErr()) {
+    argv[0] = b.ToObject();
+    argv[1] = Nan::Null();
+  } else {
+    argv[0] = Nan::Null();
+    argv[1] = Conversion::Message::ToV8Object(b.data<RdKafka::Message*>());
+  }
 
   // We can delete msg now
-  delete msg;
+  if(auto *msg = b.data<RdKafka::Message*>())
+    delete msg;
 
   callback->Call(argc, argv);
 }
